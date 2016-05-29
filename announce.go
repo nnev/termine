@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"text/template"
@@ -20,6 +21,8 @@ je nachdem, was am nächsten Donnerstag ist.`,
 	NeedsDB:      true,
 	RegenWebsite: false,
 }
+
+var targetmailaddr = flag.String("announceAddress", "ccchd@ccchd.de", "Mailadresse, an die Ankündigungen gehen sollen.")
 
 func init() {
 	cmdAnnounce.Run = RunAnnounce
@@ -116,35 +119,48 @@ Wer mehr Informationen möchte:
 }
 
 func sendAnnouncement(subject string, msg []byte) error {
-	fromheader := "From: frank@noname-ev.de"
-	toheader := "To: ccchd@ccchd.de"
-	subjectheader := "Subject: " + subject
-	fullmail := []byte(fromheader + "\n" + subjectheader + "\n" + toheader + "\n\n")
-	fullmail = append(fullmail, msg...)
+	fullmail := new(bytes.Buffer)
+	fmt.Fprintf(fullmail, `From: frank@noname-ev.de
+To: %s
+Subject: %s
+
+%s`, *targetmailaddr, subject, msg)
 
 	cmd := exec.Command("/usr/sbin/sendmail", "-t")
 
-	cmd.Stdin = bytes.NewReader(fullmail)
+	cmd.Stdin = fullmail //bytes.NewReader(fullmail)
+
+	stdout := new(bytes.Buffer)
+	cmd.Stdout = stdout
+	cmd.Stderr = stdout
 
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "Fehler beim Senden: ", err)
+		fmt.Fprintln(os.Stderr, "Fehler beim Senden der Mail: ", err)
+		fmt.Fprintln(os.Stderr, "Output von Sendmail:")
+		io.Copy(os.Stderr, stdout)
 	}
 
 	return nil
 }
 
 func RunAnnounce() {
-	nextThursday := getNextThursdays(1)[0]
+	var nextRelevantDate time.Time
 
-	isStm, err := isStammtisch(nextThursday)
+	// the second part of the where-statement is necessary, otherwise the statement does not return the next date
+	if err := db.QueryRow("SELECT date FROM termine WHERE date > NOW() AND date < NOW() + interval '7 days' AND override IS NULL").Scan(&nextRelevantDate); err != nil {
+		fmt.Fprintln(os.Stderr, "Kann nächsten Termin nicht auslesen:", err)
+		return
+	}
+
+	isStm, err := isStammtisch(nextRelevantDate)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Kann stammtischiness nicht auslesen:", err)
 		return
 	}
 
 	if isStm {
-		announceStammtisch(nextThursday)
+		announceStammtisch(nextRelevantDate)
 	} else {
-		announceC14(nextThursday)
+		announceC14(nextRelevantDate)
 	}
 }
