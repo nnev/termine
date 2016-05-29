@@ -1,16 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"database/sql"
 	"flag"
 	"fmt"
 	"os"
-	"time"
-	//"net/smtp"
 	"os/exec"
 	"text/template"
-	//"bufio"
-	"bytes"
-	"database/sql"
+	"time"
 )
 
 var cmdAnnounce = &Command{
@@ -52,7 +50,7 @@ Damit wir passend reservieren können, tragt bitte bis Dienstag Abend,
 
 	mailtmpl := template.Must(template.New("maildraft").Parse(maildraft))
 	mailbuf := new(bytes.Buffer)
-	type data struct{
+	type data struct {
 		Location string
 	}
 	err = mailtmpl.Execute(mailbuf, data{loc})
@@ -64,23 +62,49 @@ Damit wir passend reservieren können, tragt bitte bis Dienstag Abend,
 
 func announceC14(date time.Time) {
 
-	var vortragid sql.NullInt64
-	err := db.QueryRow("SELECT vortrag FROM termine WHERE date = $1", date).Scan(&vortragid)
-	fmt.Println(err)
-
-	type data struct{
+	type data struct {
 		Topic, Abstract, Speaker string
 	}
+
 	d := new(data)
-	err = db.QueryRow("SELECT topic FROM vortraege WHERE id = $1", vortragid).Scan(&d.Topic)
-	err = db.QueryRow("SELECT abstract FROM vortraege WHERE id = $1", vortragid).Scan(&d.Abstract)
-	err = db.QueryRow("SELECT speaker FROM vortraege WHERE id = $1", vortragid).Scan(&d.Speaker)
+
+	err := db.QueryRow("SELECT topic FROM vortraege WHERE date = $1", date).Scan(&d.Topic)
+	if err != nil {
+
+		if err == sql.ErrNoRows {
+			fmt.Println("Es gibt nächsten Donnerstag noch keine c1/4. :(")
+			return
+		}
+
+		fmt.Fprintln(os.Stderr, "Kann topic nicht auslesen:", err)
+		return
+	}
+
+	err = db.QueryRow("SELECT abstract FROM vortraege WHERE date = $1", date).Scan(&d.Abstract)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Kann abstract nicht auslesen:", err)
+		return
+	}
+
+	err = db.QueryRow("SELECT speaker FROM vortraege WHERE date = $1", date).Scan(&d.Speaker)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Kann speaker nicht auslesen:", err)
+		return
+	}
 
 	maildraft := `Liebe Treffler,
 
-die chaotische Viertelstunde am kommenden Donnerstag wird {{.Speaker}} über {{.Topic}} sprechen.
+am kommenden Donnerstag wird es um das Thema
 
-Abstract:
+    {{.Topic}}
+
+gehen. Es spricht {{.Speaker}} zu uns.
+
+
+Kommet zahlreich!
+
+
+Wer mehr Informationen möchte:
 
 {{.Abstract}}
 	`
@@ -124,8 +148,8 @@ func sendAnnouncement(subject, msg string) error {
 
 func RunAnnounce() {
 	// get next donnerstag, bool stammtisch is true oder false
-	nextThursday := getNextThursdays(2)[1]
-	fmt.Println(nextThursday)
+	nextThursday := getNextThursdays(3)[2]
+
 	isStm, err := isStammtisch(nextThursday)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Kann stammtischiness nicht auslesen:", err)
@@ -137,5 +161,4 @@ func RunAnnounce() {
 	} else {
 		announceC14(nextThursday)
 	}
-
 }
