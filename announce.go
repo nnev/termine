@@ -118,7 +118,7 @@ Wer mehr Informationen möchte:
 	sendAnnouncement(data.Topic, mail)
 }
 
-func sendAnnouncement(subject string, msg []byte) error {
+func sendAnnouncement(subject string, msg []byte) {
 	fullmail := new(bytes.Buffer)
 	fmt.Fprintf(fullmail, `From: frank@noname-ev.de
 To: %s
@@ -128,7 +128,7 @@ Subject: %s
 
 	cmd := exec.Command("/usr/sbin/sendmail", "-t")
 
-	cmd.Stdin = fullmail //bytes.NewReader(fullmail)
+	cmd.Stdin = fullmail
 
 	stdout := new(bytes.Buffer)
 	cmd.Stdout = stdout
@@ -137,12 +137,8 @@ Subject: %s
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "Fehler beim Senden der Mail: ", err)
 		fmt.Fprintln(os.Stderr, "Output von Sendmail:")
-		if _, err = io.Copy(os.Stderr, stdout); err != nil {
-			fmt.Fprintln(os.Stderr, "Fehler beim Ausgeben des sendmail-Outputs: ", err)
-		}
+		io.Copy(os.Stderr, stdout)
 	}
-
-	return nil
 }
 
 func RunAnnounce() {
