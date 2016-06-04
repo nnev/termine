@@ -144,7 +144,7 @@ Subject: %s
 func RunAnnounce() {
 	var nextRelevantDate time.Time
 
-	if err := db.QueryRow("SELECT date FROM termine WHERE date > NOW() AND override IS NULL ORDER BY date ASC LIMIT 1").Scan(&nextRelevantDate); err != nil {
+	if err := db.QueryRow("SELECT date FROM termine WHERE date > NOW() AND override = '' ORDER BY date ASC LIMIT 1").Scan(&nextRelevantDate); err != nil {
 		fmt.Fprintln(os.Stderr, "Kann nächsten Termin nicht auslesen:", err)
 		return
 	}
