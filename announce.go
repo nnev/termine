@@ -15,7 +15,7 @@ import (
 var cmdAnnounce = &Command{
 	UsageLine: "announce",
 	Short:     "Kündigt nächsten Stammtisch oder nächste c¼h an",
-	Long: `Announced den nächsten Stammtisch oder die nächste c¼h,
+	Long: `Kündigt den nächsten Stammtisch oder die nächste c¼h an,
 je nachdem, was am nächsten Donnerstag ist.`,
 	Flag:         flag.NewFlagSet("announce", flag.ExitOnError),
 	NeedsDB:      true,
@@ -137,7 +137,9 @@ Subject: %s
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "Fehler beim Senden der Mail: ", err)
 		fmt.Fprintln(os.Stderr, "Output von Sendmail:")
-		io.Copy(os.Stderr, stdout)
+		if _, err = io.Copy(os.Stderr, stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "Fehler beim Ausgeben des sendmail-Outputs: ", err)
+		}
 	}
 
 	return nil
@@ -146,8 +148,7 @@ Subject: %s
 func RunAnnounce() {
 	var nextRelevantDate time.Time
 
-	// the second part of the where-statement is necessary, otherwise the statement does not return the next date
-	if err := db.QueryRow("SELECT date FROM termine WHERE date > NOW() AND date < NOW() + interval '7 days' AND override IS NULL").Scan(&nextRelevantDate); err != nil {
+	if err := db.QueryRow("SELECT date FROM termine WHERE date > NOW() AND override IS NULL ORDER BY date ASC LIMIT 1").Scan(&nextRelevantDate); err != nil {
 		fmt.Fprintln(os.Stderr, "Kann nächsten Termin nicht auslesen:", err)
 		return
 	}
